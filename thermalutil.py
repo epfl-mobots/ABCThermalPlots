@@ -4,10 +4,61 @@ Author(s):
 '''
 
 import numpy as np
+import pandas as pd
 import numpy.ma as ma
 import scipy
 from scipy.interpolate import RBFInterpolator
 import matplotlib.pyplot as plt
+
+def preview(df_therm_data,show_sensors=False,vmin=None,vmax=None,rows=None):
+    '''
+    Preview the thermal data in the file through 6 plots of equally spaced time points.
+    param df_therm_data: pandas dataframe containing thermal data (datetime as index, 64 columns for sensor data and potentially one more column for validity)
+    param rows: list of row indices to preview
+    '''
+
+    # check that the df is valid
+    if not isinstance(df_therm_data, pd.DataFrame):
+        raise ValueError("The input is not a pandas dataframe")
+    if df_therm_data.shape[1] != 65 and df_therm_data.shape[1] != 64:
+        raise ValueError(f"The input dataframe does not have the correct shape (needs to be 64 or 65 columns and got {df_therm_data.shape[1]})")
+    if df_therm_data.index.name != 'datetime':
+        raise ValueError("The input dataframe does not have the correct index name (needs to be 'datetime')")
+    if df_therm_data.iloc[:,0].name !='t00':
+        raise ValueError("The input dataframe does not have the correct column names (first column should be 't00')")
+    
+    # iterate through a few rows
+    plt.figure(); plt.clf()
+    _, ax = plt.subplots(nrows=2, ncols=3, figsize=(20, 7))
+    n_data_points = df_therm_data.shape[0]
+    if rows is None:
+        rows = np.linspace(0, n_data_points-1, 6, dtype=int)
+
+    coords = []
+    print("=====================================================================================================================================================")
+    print("=====================================================================================================================================================")
+    print(f"Previewing thermal data:")
+    for i, row in enumerate(rows):
+        temps = df_therm_data.iloc[row]
+        temps_np = temps.to_numpy()
+        try:
+            thermalframe = ThermalFrame(temperature_data=temps_np, show_sensors=show_sensors)
+
+        except NoValidSensors as e:
+            print(f"Skipping row {row} due to no valid sensors")
+            continue
+        
+        temp_field = thermalframe.calculate_thermal_field(verbose=False)
+
+        x, y = thermalframe.get_max_temp_pos()
+        coords.append((row, df_therm_data.iloc[row].name, x, y))
+
+        print(f"Max temp at {x}, {y} for row {row} [tmax = {np.max(temp_field)}]")
+        a = ax.flat[i]
+        thermalframe.plot_thermal_field(a,show_cb=True,v_min=vmin,v_max=vmax)
+        a.plot(x, y, 'go', markersize=4,label='Max temp')
+        a.set_title(f"Row {row} -> {str(df_therm_data.iloc[row].name)}")
+        a.legend(loc='upper right', fontsize=7)
 
 def trend_filter(data, lmbd=50, order=2):
 
