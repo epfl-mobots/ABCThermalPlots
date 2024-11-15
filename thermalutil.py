@@ -378,3 +378,99 @@ class ThermalFrame:
         i_max = np.argwhere(self.thermal_field == np.max(self.thermal_field))[0]
 
         return (i_max[1], ThermalFrame.y_pcb-i_max[0])
+    
+def plot_temp(df_therm_data, line_csv, line_field = None):
+    '''
+    This funtion provides a plot of the temperature profile. 
+    param df_therm_data: Pandas dataframe containing thermal data (datetime as index, 64 columns for sensor data and potentially one more column for validity).
+    param line_csv : line of the df_therm_data representing the thermal field to be plotted
+    param line_field : line of the thermal field to be plotted. If None, plot only the line crossing the maximum temperature
+    '''
+    
+    #Compute the thermal field
+    temps = df_therm_data.iloc[line_csv, :]
+    temps_np = temps.to_numpy()
+    thermal_field = ThermalFrame(temperature_data=temps_np, show_sensors=True)
+    temp_field = thermal_field.calculate_thermal_field(verbose=False)
+
+    # Find the position of the maximum temperature
+    max = np.argwhere(temp_field  == np.max(temp_field))[0]
+
+    # Plot the temperature profile
+    plt.figure(1, figsize=(10, 5))
+    x = np.arange(0, temp_field.shape[1])
+    if line_field != None:
+        plt.plot(temp_field[line_field, :], color='blue', label=f'Line {line_field}')
+    plt.plot(temp_field[max[0], :], color = 'green', label=f'Line {temp_field.shape[0] - max[0]} crossing max temperature', linestyle='--')
+    plt.fill_between(x, 18, 23, color='red', alpha=0.3, label='Sumpter Bees Comfort Zone')
+    
+    plt.title(f'Temperature profile of lower frame [°C]')
+    plt.xlabel('Columns')
+    plt.ylabel('Temperature [°C]')
+    plt.legend( loc='upper right', prop={'size': 6})
+
+
+def preview_single(df_therm_data_top, df_therm_data_bot,show_sensors=False,row_top = None, row_bot = None, vmin=None,vmax=None):
+    '''
+    This function provides a preview of the thermal data from two different files through 2 plots of equally spaced time points.
+    param df_therm_data_top: Pandas dataframe containing thermal data (datetime as index, 64 columns for sensor data and potentially one more column for validity).
+                             This plot appears on the upper frame.
+    param df_therm_data_bot: Pandas dataframe containing thermal data (datetime as index, 64 columns for sensor data and potentially one more column for validity).
+                             This plot appears on the lower frame.
+    row_top :row of the df_therm_data_top plotted on the upper frame
+    row_bot :row of the df_therm_data_bot plotted on the lower frame
+    vmin and vmax: range of temperature plotted
+    '''
+
+    # check that the df_top is valid
+    if not isinstance(df_therm_data_top, pd.DataFrame) or not isinstance(df_therm_data_bot, pd.DataFrame):
+        raise ValueError("One input is not a pandas dataframe")
+    if (df_therm_data_top.shape[1] != 65 and df_therm_data_top.shape[1] != 64) or (df_therm_data_bot.shape[1] != 65 and df_therm_data_bot.shape[1] != 64):
+        raise ValueError("One of the input dataframe does not have the correct shape (needs to be 64 or 65 columns)")
+    if df_therm_data_top.index.name != 'datetime' or df_therm_data_bot.index.name != 'datetime':
+        raise ValueError("One of the input dataframe does not have the correct index name (needs to be 'datetime')")
+    if df_therm_data_top.iloc[:,0].name !='t00' or df_therm_data_bot.iloc[:,0].name !='t00':
+        raise ValueError("One of the input dataframe does not have the correct column names (first column should be 't00')")
+    
+    # iterate through a few rows
+    plt.figure(); plt.clf()
+    _, (ax1, ax2) = plt.subplots(2, figsize=(12, 8))
+    n_data_points = df_therm_data_top.shape[0]
+    if row_top is None:
+        row_top = np.linspace(0, n_data_points-1, 6, dtype=int)
+    if row_bot is None:
+        row_bot = np.linspace(0, n_data_points-1, 6, dtype=int)
+
+    print("=====================================================================================================================================================")
+    print("=====================================================================================================================================================")
+    print(f"Previewing thermal data:")
+    
+    # For the top frame
+    # Compute the thermal field
+    temps_top = df_therm_data_top.iloc[row_top]
+    temps_np_top = temps_top.to_numpy()
+    thermalframe_top = ThermalFrame(temperature_data=temps_np_top, show_sensors=show_sensors)
+    temp_field_top = thermalframe_top.calculate_thermal_field(verbose=False)
+    # Find and print the position of the maximum temperature
+    x_top, y_top = thermalframe_top.get_max_temp_pos()
+    print(f"For the top frame : Max temp at {x_top}, {y_top} for row {row_top} [tmax = {np.max(temp_field_top)}]")
+    # Plot the thermal field
+    thermalframe_top.plot_thermal_field(ax1,show_cb=True,v_min=vmin,v_max=vmax)
+    ax1.plot(x_top, y_top, 'go', markersize=4,label='Max temp')
+    ax1.set_title(f"Upper frame :  {df_therm_data_top.iloc[row_top].name}")
+    ax1.legend(loc='upper right', fontsize=7)
+    
+    # For the bottom frame
+    # Compute the thermal field 
+    temps_bot = df_therm_data_bot.iloc[row_bot]
+    temps_np_bot = temps_bot.to_numpy()
+    thermalframe_bot = ThermalFrame(temperature_data=temps_np_bot, show_sensors=show_sensors)
+    temp_field_bot = thermalframe_bot.calculate_thermal_field(verbose=False)
+    # Find and print the position of the maximum temperature
+    x_bot, y_bot = thermalframe_bot.get_max_temp_pos()
+    print(f"For the bottom frame : Max temp at {x_bot}, {y_bot} for row {row_bot} [tmax = {np.max(temp_field_bot)}]")
+    # Plot the thermal field
+    thermalframe_bot.plot_thermal_field(ax2,show_cb=True,v_min=vmin,v_max=vmax)
+    ax2.plot(x_bot, y_bot, 'go', markersize=4,label='Max temp')
+    ax2.set_title(f"Lower frame :  {df_therm_data_bot.iloc[row_bot].name}")
+    ax2.legend(loc='upper right', fontsize=7)
