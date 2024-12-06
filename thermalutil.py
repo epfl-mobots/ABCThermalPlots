@@ -358,7 +358,11 @@ class ThermalFrame:
 
         # Contour lines
         if contours is not None:
-            cs = ax.contour(temp_field, levels=contours, colors='k', linewidths=0.3, )
+            cs = ax.contour(temp_field, levels=contours, colors='k', linewidths=0.3)
+            # Flip the contours along the y-axis
+            for collection in cs.collections:
+                for path in collection.get_paths():
+                    path.vertices[:, 1] = ThermalFrame.y_pcb - path.vertices[:, 1]
 
         ax.set_xlim([0, self.x_pcb])
         ax.set_ylim([0, self.y_pcb])
