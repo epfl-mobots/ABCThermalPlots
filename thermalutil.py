@@ -61,7 +61,6 @@ def preview(df_therm_data,show_sensors=False,vmin=None,vmax=None,rows=None):
         a.legend(loc='upper right', fontsize=7)
 
 def trend_filter(data, lmbd=50, order=2):
-
     ''' Trend filtering
         type: 'L1' or 'HP'
 
