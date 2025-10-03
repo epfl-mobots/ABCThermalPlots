@@ -5,10 +5,47 @@ Author(s):
 
 import numpy as np
 import pandas as pd
-import numpy.ma as ma
 import scipy
 from scipy.interpolate import RBFInterpolator
 import matplotlib.pyplot as plt
+
+def generateThermalDF(df:pd.DataFrame)->pd.DataFrame:
+    '''
+    Generates a panda df for temperatures that is friendly with the thermalutil.py libray.
+    This means the columns are t00-t64 and one line is one timestamp.
+    Parameters:
+    - df: pd.DataFrame containing the temperatures in an influxdb format.
+
+    returns:
+    - upper: pd.DataFrame containing the upper hive temperatures
+    - lower: pd.DataFrame containing the lower hive temperatures
+    '''
+    _index = df.index.unique()
+    upper = pd.DataFrame(index=_index)
+    lower = pd.DataFrame(index=_index)
+    df_upper = df[(df['_measurement'] == 'tmp') & (df['inhive_loc'] == 'upper')]
+    df_lower = df[(df['_measurement'] == 'tmp') & (df['inhive_loc'] == 'lower')]
+
+    for i in range(64):
+        column_name = f't{i:02d}'
+        # For every index of thermal_df, get the temperature which has the same datetime in df
+        upper[column_name] = df_upper[df_upper['_field'] == column_name]['_value']
+        lower[column_name] = df_lower[df_lower['_field'] == column_name]['_value']
+
+    # Set the right column names
+    upper.columns = [f't{i:02d}' for i in range(64)]
+    lower.columns = [f't{i:02d}' for i in range(64)]
+
+    # Convert every column to float type
+    for col in upper.columns:
+        upper[col] = upper[col].astype(float)
+    for col in lower.columns:
+        lower[col] = lower[col].astype(float)
+
+    # Replace -273.0 with np.nan
+    upper.replace(-273.0, np.nan, inplace=True)
+    lower.replace(-273.0, np.nan, inplace=True)
+    return upper, lower
 
 def preview(df_therm_data,show_sensors=False,vmin=None,vmax=None,rows=None):
     '''
@@ -224,7 +261,10 @@ class ThermalFrame:
     def find_bad_sensors(self):
         '''Find the indices of bad sensors in a list or array of thermal data.
             For now only 2 cases are verified'''
-        bad_sensors_idx = np.asarray((self.temperature_list==np.inf)|(self.temperature_list==-273.0)|(self.temperature_list>2000)).nonzero()
+        bad_sensors_idx = np.asarray((self.temperature_list==np.inf)|
+                                     (self.temperature_list==-273.0)|
+                                     (self.temperature_list>2000)|
+                                     (np.isnan(self.temperature_list))).nonzero()
 
         if bad_sensors_idx[0].shape[0] ==ThermalFrame.n_sensors:
             raise NoValidSensors('Not a single sensor has valid data!')
