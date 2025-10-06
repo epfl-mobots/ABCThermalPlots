@@ -332,7 +332,7 @@ class ThermalFrame:
 
         return self.thermal_field
 
-    def plot_thermal_field(self, ax, cmap=None, show_cb=False, contours=None, v_min=None, v_max=None):
+    def plot_thermal_field(self, ax, cmap=None, show_cb=False, contours:list=None, v_min=None, v_max=None):
         cm = plt.get_cmap('bwr') if cmap is None else cmap
 
         if self.thermal_field is None:
