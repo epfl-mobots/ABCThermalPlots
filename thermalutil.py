@@ -42,9 +42,9 @@ def generateThermalDF(df:pd.DataFrame)->pd.DataFrame:
     for col in lower.columns:
         lower[col] = lower[col].astype(float)
 
-    # Replace -273.0 with np.nan
-    upper.replace(-273.0, np.nan, inplace=True)
-    lower.replace(-273.0, np.nan, inplace=True)
+    # Suppress eratic values
+    upper[upper < -50] = np.nan
+    lower[lower < -50] = np.nan
     return upper, lower
 
 def preview(df_therm_data,show_sensors=False,vmin=None,vmax=None,rows=None):
