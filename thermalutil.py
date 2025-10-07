@@ -250,6 +250,9 @@ class ThermalFrame:
             self.temperature_list = np.array(temperatures)
         elif type(temperatures) == np.ndarray:
             self.temperature_list = temperatures
+
+        # Convert to float
+        self.temperature_list = self.temperature_list.astype(float)
         
         self.temperature_array = self.temperature_list[ThermalFrame.sensor_idx_map] # Here the order is changed to match the sensor positions on the PCB
 
@@ -364,7 +367,6 @@ class ThermalFrame:
             print(f"grid: {np.shape(ThermalFrame.grid)}")
         sensor_zi = self.rbf(grid_flattened)
         ygrid = sensor_zi.reshape(410, 180).T
-        ygrid = np.flipud(ygrid) # Flip the y-axis to match the sensor positions
         if verbose:
             print(f"ygrid: {np.shape(ygrid)}")
             print(f"ygrid: {ygrid}")
@@ -382,7 +384,7 @@ class ThermalFrame:
             temp_field = self.thermal_field.copy()
 
         # Plot temperature field
-        self.image = ax.imshow(temp_field,extent=ThermalFrame.extent,cmap=cm, vmin=v_min, vmax=v_max)
+        self.image = ax.imshow(temp_field,extent=ThermalFrame.extent,cmap=cm, vmin=v_min, vmax=v_max, origin='lower')
 
         ax.yaxis.set_major_locator(plt.MaxNLocator(3)) # Reduce the number of ticks on the y-axis
 
@@ -398,11 +400,7 @@ class ThermalFrame:
 
         # Contour lines
         if contours is not None:
-            cs = ax.contour(temp_field, levels=contours, colors='k', linewidths=0.3)
-            # Flip the contours along the y-axis
-            for collection in cs.collections:
-                for path in collection.get_paths():
-                    path.vertices[:, 1] = ThermalFrame.y_pcb - path.vertices[:, 1]
+            cs = ax.contour(temp_field, levels=contours, colors='k', linewidths=0.3, origin='lower')
 
         ax.set_xlim([0, self.x_pcb])
         ax.set_ylim([0, self.y_pcb])
