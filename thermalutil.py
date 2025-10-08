@@ -5,18 +5,135 @@ Author(s):
 
 import numpy as np
 import pandas as pd
-import numpy.ma as ma
 import scipy
 from scipy.interpolate import RBFInterpolator
 import matplotlib.pyplot as plt
 
-def preview(df_therm_data,show_sensors=False,vmin=None,vmax=None,rows=None):
+def generateThermalDF(df:pd.DataFrame)->pd.DataFrame:
+    '''
+    Generates a panda df for temperatures that is friendly with the thermalutil.py libray.
+    This means the columns are t00-t64 and one line is one timestamp.
+    Parameters:
+    - df: pd.DataFrame containing the temperatures in an influxdb format.
+
+    returns:
+    - upper: pd.DataFrame containing the upper hive temperatures
+    - lower: pd.DataFrame containing the lower hive temperatures
+    '''
+    _index = df.index.unique()
+    upper = pd.DataFrame(index=_index)
+    lower = pd.DataFrame(index=_index)
+    df_upper = df[(df['_measurement'] == 'tmp') & (df['inhive_loc'] == 'upper')]
+    df_lower = df[(df['_measurement'] == 'tmp') & (df['inhive_loc'] == 'lower')]
+
+    for i in range(64):
+        column_name = f't{i:02d}'
+        # For every index of thermal_df, get the temperature which has the same datetime in df
+        upper[column_name] = df_upper[df_upper['_field'] == column_name]['_value']
+        lower[column_name] = df_lower[df_lower['_field'] == column_name]['_value']
+
+    # Set the right column names
+    upper.columns = [f't{i:02d}' for i in range(64)]
+    lower.columns = [f't{i:02d}' for i in range(64)]
+
+    # Convert every column to float type
+    for col in upper.columns:
+        upper[col] = upper[col].astype(float)
+    for col in lower.columns:
+        lower[col] = lower[col].astype(float)
+
+    # Suppress eratic values
+    upper[upper < -50] = np.nan
+    lower[lower < -50] = np.nan
+    return upper, lower
+
+def readFromFile(filepath:str, verbose:bool=False)->pd.DataFrame:
+    '''
+    Reads a .dat or .csv file and returns a pandas dataframe with the thermal data.
+    The file is expected to have the following format:
+    - First column: datetime in ISO format
+    - Next 64 columns: temperature data from sensors t00 to t63
+    - Optional next column: validity flag (True/False)
+    - Optional next 10 columns: target temperatures
+    - Optional next 10 columns: h_avg_temps
+    - Optional next 10 columns: pwm values
+    
+    Parameters:
+    - filepath: path to the .dat file
+    
+    Returns:
+    - df_therm_data: pandas dataframe containing thermal data (datetime as index, 64 columns for sensor data and potentially one more column for validity)
+    '''
+
+    assert filepath.endswith('.dat') or filepath.endswith('.csv'), "File must be a .dat or .csv file"
+
+    if filepath.endswith('.csv'):
+        df = pd.read_csv(filepath, parse_dates=['datetime'])
+        df.drop(columns=['timestamp'], inplace=True)
+
+    else:
+        # First skip the lines that do not start with "20" (the millenia)
+        skip = 0
+        with open(filepath, 'r') as f:
+            lines = f.readlines()
+            while skip < len(lines) and not lines[skip].startswith('20'):
+                skip += 1
+
+        try:
+            # Assuming data is in a structured format like CSV or similar
+            df = pd.read_csv(filepath, delimiter=',', skiprows=skip, header=None)
+        except FileNotFoundError:
+            print(f"File '{filepath}' not found.")
+
+    validity_flag = False
+    # make the columns as being : datetime, 64 columns for sensor data
+    temps_labels = [f't{i:02d}' for i in range(64)]
+    if df.shape[1] == 1+ 64 + 1 + 10 + 10 + 10 or df.shape[1] == 1 + 64 + 1: # datetime + 64 temps + 1 validity + 10 targets + 10 h_avg_temps + 10 pwm
+        validity_flag = True
+        if verbose:
+            print("File has validity flag")
+        temps_labels.append('validity')
+    other_cols = df.shape[1] - (1 + 64 + (1 if validity_flag else 0))
+    other_cols_labels = []
+    if other_cols > 0:
+        other_cols_labels = ['target' for _ in range(10)] + ['h_avg_temps' for _ in range(10)] + ['pwm' for _ in range(10)]
+    df.columns = ['datetime'] + temps_labels + other_cols_labels
+    df.set_index('datetime', inplace=True)
+    if verbose:
+        print(f"dataframe preview:\n {df.head()}")
+
+    temps = df.iloc[:,0:64]
+    if validity_flag:
+        #typecast the validity column to boolean
+        df.loc[:,'validity'] = df.loc[:,'validity'].astype(bool)
+        temps = temps[df.loc[:,'validity'] == True]
+    # Delete the validity column if it exists
+    if 'validity' in df.columns:
+        df.drop(columns=['validity'], inplace=True)
+    if verbose:
+        print(f"temps preview:\n {temps.head()}")
+
+    if df.shape[1] > 64: # 64 temps
+        targets = df.iloc[:,64:74]
+        targets.columns = [f'h{i:02d}' for i in range(targets.shape[1])]
+    else:
+        targets = pd.DataFrame(index=temps.index) # Empty dataframe
+    if verbose:
+        print(f"targets preview:\n {targets.head()}")
+
+    return temps, targets
+
+def preview(df_therm_data, 
+            show_sensors:bool=False, 
+            contours:list[float] = None, 
+            vmin=None,
+            vmax=None,
+            rows=None):
     '''
     Preview the thermal data in the file through 6 plots of equally spaced time points.
     param df_therm_data: pandas dataframe containing thermal data (datetime as index, 64 columns for sensor data and potentially one more column for validity)
     param rows: list of row indices to preview
     '''
-
     # check that the df is valid
     if not isinstance(df_therm_data, pd.DataFrame):
         raise ValueError("The input is not a pandas dataframe")
@@ -28,38 +145,32 @@ def preview(df_therm_data,show_sensors=False,vmin=None,vmax=None,rows=None):
         raise ValueError("The input dataframe does not have the correct column names (first column should be 't00')")
     
     # iterate through a few rows
-    plt.figure(); plt.clf()
     _, ax = plt.subplots(nrows=2, ncols=3, figsize=(20, 7))
     n_data_points = df_therm_data.shape[0]
     if rows is None:
         rows = np.linspace(0, n_data_points-1, 6, dtype=int)
 
-    coords = []
-    print("=====================================================================================================================================================")
     print("=====================================================================================================================================================")
     print(f"Previewing thermal data:")
     for i, row in enumerate(rows):
         temps = df_therm_data.iloc[row]
         temps_np = temps.to_numpy()
         try:
-            thermalframe = ThermalFrame(temperature_data=temps_np, show_sensors=show_sensors)
+            tf = ThermalFrame(temperature_data=temps_np)
 
         except NoValidSensors as e:
             print(f"Skipping row {row} due to no valid sensors")
             continue
         
-        temp_field = thermalframe.calculate_thermal_field(verbose=False)
+        tf.calculate_thermal_field(verbose=False)
 
-        x, y = thermalframe.get_max_temp_pos()
-        coords.append((row, df_therm_data.iloc[row].name, x, y))
+        x, y = tf.get_max_temp_pos()
 
-        print(f"Max temp at {x}, {y} for row {row} [tmax = {np.max(temp_field)}]")
+        print(f"Max temp at {x}, {y} for row {row} [tmax = {tf.max_temp} °C]")
         a = ax.flat[i]
-        thermalframe.plot_thermal_field(a,show_cb=True,v_min=vmin,v_max=vmax)
-        a.plot(x, y, 'go', markersize=4,label='Max temp')
-        a.set_title(f"Row {row} -> {str(df_therm_data.iloc[row].name)}")
-        a.legend(loc='upper right', fontsize=7)
-
+        tf.plot_thermal_field(a,show_cb=True, show_sensors=show_sensors, show_max_temp=True, contours=contours, annotate_contours=True, v_min=vmin,v_max=vmax)
+        a.set_title(f"Row {row} -> {str(df_therm_data.iloc[row].name)}") # Overwrite the title
+    
 def trend_filter(data, lmbd=50, order=2):
     ''' Trend filtering
         type: 'L1' or 'HP'
@@ -153,7 +264,8 @@ class ThermalFrame:
         163.35, 163.35, 163.35, 163.35, 163.35, 163.35, 163.35, 163.35, 163.35, 163.35, 163.35
     ])
 
-    ## Flip Y values to align make the origin on the lower left corner
+    # Flip Y values to make the origin of coordinates on the lower left corner.
+    # Otherwise images are represented with the origin on the upper left corner
     sensor_y = np.flipud(sensor_y)
 
     sensor_idx_map = np.array([60, 53, 54, 47, 40, 26, 27, 12, 13, 6, 7,
@@ -179,7 +291,7 @@ class ThermalFrame:
         c = tgt % 11
         mapping_t_to_row_col[s] = {'row': r, 'col': c}
 
-    def __init__(self, temperature_data, hive_id=None, hive_pos=None, bad_sensors=None,show_sensors=False,show_contour=True):
+    def __init__(self, temperature_data, hive_id:int=-1, hive_pos=None, bad_sensors=None,show_contour=True):
         '''
         bad_sensors: list with indeces of bad sensors
         '''
@@ -191,10 +303,7 @@ class ThermalFrame:
         self.hive_id = hive_id
         self.hive_pos = hive_pos
 
-        self.show_sensors = show_sensors
         self.show_contour = show_contour
-
-        self.image = None # Store the imshow object
 
         self.set_thermal_data(temperature_data)
         self.find_bad_sensors() # Check for any bad sensor
@@ -212,6 +321,9 @@ class ThermalFrame:
             self.temperature_list = np.array(temperatures)
         elif type(temperatures) == np.ndarray:
             self.temperature_list = temperatures
+
+        # Convert to float
+        self.temperature_list = self.temperature_list.astype(float)
         
         self.temperature_array = self.temperature_list[ThermalFrame.sensor_idx_map] # Here the order is changed to match the sensor positions on the PCB
 
@@ -223,7 +335,10 @@ class ThermalFrame:
     def find_bad_sensors(self):
         '''Find the indices of bad sensors in a list or array of thermal data.
             For now only 2 cases are verified'''
-        bad_sensors_idx = np.asarray((self.temperature_list==np.inf)|(self.temperature_list==-273.0)|(self.temperature_list>2000)).nonzero()
+        bad_sensors_idx = np.asarray((self.temperature_list==np.inf)|
+                                     (self.temperature_list==-273.0)|
+                                     (self.temperature_list>2000)|
+                                     (np.isnan(self.temperature_list))).nonzero()
 
         if bad_sensors_idx[0].shape[0] ==ThermalFrame.n_sensors:
             raise NoValidSensors('Not a single sensor has valid data!')
@@ -329,10 +444,13 @@ class ThermalFrame:
             print(f"ygrid: {ygrid}")
         
         self.thermal_field = ygrid
+        self.max_temp = np.max(self.thermal_field)
+        self.min_temp = np.min(self.thermal_field)
 
         return self.thermal_field
 
-    def plot_thermal_field(self, ax, cmap=None, show_cb=False, contours:list=None, v_min=None, v_max=None):
+    def plot_thermal_field(self, ax, cmap=None, show_cb:bool=False, show_sensors:bool=False, show_max_temp:bool=False, contours:list=None, annotate_contours:bool=False, v_min=None, v_max=None, viewed_from:str = 'front'):
+        assert viewed_from in ['front', 'back'], "viewed_from must be 'front' or 'back'"
         cm = plt.get_cmap('bwr') if cmap is None else cmap
 
         if self.thermal_field is None:
@@ -340,25 +458,43 @@ class ThermalFrame:
         else:
             temp_field = self.thermal_field.copy()
 
+        if viewed_from == 'back':
+            # Flip the thermal field horizontally
+            temp_field = np.fliplr(temp_field)
+
         # Plot temperature field
-        self.image = ax.imshow(temp_field,extent=ThermalFrame.extent,cmap=cm, vmin=v_min, vmax=v_max)
+        _image = ax.imshow(temp_field,extent=ThermalFrame.extent,cmap=cm, vmin=v_min, vmax=v_max)
 
         ax.yaxis.set_major_locator(plt.MaxNLocator(3)) # Reduce the number of ticks on the y-axis
 
         if show_cb:
-            cbar = plt.colorbar(self.image, ax=ax, orientation='vertical')
+            cbar = plt.colorbar(_image, ax=ax, orientation='vertical')
             cbar.ax.set_position([ax.get_position().x1 + 0.01, ax.get_position().y0, 0.04, ax.get_position().height])  # Adjust position relative to ax
 
         # Mark sensors
-        if self.show_sensors:
-            ax.plot(self.sensor_x_trusty, self.sensor_y_trusty, 's', ms=self.marker_size, c='g',label='Valid sensors')
+        if show_sensors:
+            _x_trusty = self.sensor_x_trusty if viewed_from == 'front' else self.x_pcb - self.sensor_x_trusty
+            _x_faulty = self.sensor_x_faulty if viewed_from == 'front' else self.x_pcb - self.sensor_x_faulty
+            # Valid sensors (green squares)
+            ax.scatter(_x_trusty, self.sensor_y_trusty, s=self.marker_size**2, c='g', marker='s', linewidths=0.5,label='Valid sensors')
             # Mark faulty sensors (with a cross)
-            ax.scatter(self.sensor_x_faulty, self.sensor_y_faulty, s=self.marker_size*20, c='m', marker='x', linewidths=2,label='Faulty sensors')
+            ax.scatter(_x_faulty, self.sensor_y_faulty, s=self.marker_size*20, c='m', marker='x', linewidths=2,label='Faulty sensors')
 
         # Contour lines
         if contours is not None:
-            cs = ax.contour(temp_field, levels=contours, colors='k', linewidths=0.3, )
+            cs = ax.contour(temp_field, levels=contours, colors='k', linewidths=0.3, origin='upper') # The thermal field is stored with origin upper (numpy arrays)
+            if annotate_contours:
+                ax.clabel(cs, inline=True, fontsize=8, fmt=lambda x: f"{x:.0f} C")
 
+        if show_max_temp:
+            x, y = self.get_max_temp_pos()
+            if viewed_from == 'back':
+                x = self.x_pcb - x
+            ax.plot(x, y, 'go', markersize=4,label='Max temp')
+            ax.annotate(f'{self.max_temp:.1f}°C', xy=(x, y), xytext=(5, 5), textcoords='offset points', fontsize=8, color='black')
+            ax.legend(loc='upper right', fontsize=7)
+
+        ax.set_title(f'Thermal field for hive {self.hive_id} {"(no valid sensors)" if self.n_bad_sensors==ThermalFrame.n_sensors else ""}')
         ax.set_xlim([0, self.x_pcb])
         ax.set_ylim([0, self.y_pcb])
 
@@ -367,13 +503,20 @@ class ThermalFrame:
     def set_clevels(self, c_levels):
         self.c_levels = c_levels
 
-    def get_max_temp(self):
-        return np.max(self.thermal_field)
-
-    def get_max_temp_pos(self,verbose=False):
-        '''Return the position (x-y with the origin bottom left) of maximum temperature in the thermal field'''
+    def get_max_temp_pos(self, origin:str= 'lower', verbose=False):
+        '''Return the position (x-y)
+        params:
+        - origin : 'lower' or 'upper' (default is 'lower', with the origin bottom left) of maximum temperature in the thermal field
+        '''
+        assert origin in ['lower', 'upper'], "Origin must be 'lower' or 'upper'"
         if verbose:
             print(f"shape thermal field: {np.shape(self.thermal_field)}")
+            print(ThermalFrame.y_pcb)
         i_max = np.argwhere(self.thermal_field == np.max(self.thermal_field))[0]
+        if verbose:
+            print(f"i_max: {i_max}")
 
-        return (i_max[1], ThermalFrame.y_pcb-i_max[0])
+        if origin == 'lower':
+            return (i_max[1], ThermalFrame.y_pcb-i_max[0])
+        else:
+            return (i_max[1], i_max[0])
