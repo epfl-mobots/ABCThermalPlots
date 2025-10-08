@@ -449,7 +449,7 @@ class ThermalFrame:
 
         return self.thermal_field
 
-    def plot_thermal_field(self, ax, cmap=None, show_cb:bool=False, show_sensors:bool=False, show_max_temp:bool=False, contours:list=None, annotate_contours:bool=False, v_min=None, v_max=None, viewed_from:str = 'front'):
+    def plot_thermal_field(self, ax, cmap=None, show_cb:bool=False, show_sensors:bool=False, show_max_temp:bool=False, contours:list=None, annotate_contours:bool=True, v_min=None, v_max=None, viewed_from:str = 'front'):
         assert viewed_from in ['front', 'back'], "viewed_from must be 'front' or 'back'"
         cm = plt.get_cmap('bwr') if cmap is None else cmap
 
