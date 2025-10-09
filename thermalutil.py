@@ -9,7 +9,7 @@ import scipy
 from tqdm import tqdm
 from scipy.interpolate import RBFInterpolator
 import matplotlib.pyplot as plt
-from ABCImaging.VideoManagment.videolib import generateVideoFromList, fig_to_rgb_array
+from ABCImaging.VideoManagment.videolib import generateVideoFromList, fig_to_rgb_array, cropFrameToContent
 
 def generateThermalDF(df:pd.DataFrame)->pd.DataFrame:
     '''
@@ -176,11 +176,14 @@ def preview(df_therm_data,
 
 def generateThermalVideo(df_therm_data:pd.DataFrame, 
                          video_name:str, 
-                         fps:int=10, 
+                         fps:int=10,
+                         show_cb:bool=False,
                          show_sensors:bool=False, 
+                         show_max_temp:bool=False,
                          contours:list[float]=[], 
                          vmin:float=None, vmax:float=None,
                          faulty_s:list[int]=[],
+                         padding:int=50,
                          verbose:bool=False):
     '''
     Generates a video from the thermal data in the dataframe.
@@ -211,10 +214,12 @@ def generateThermalVideo(df_therm_data:pd.DataFrame,
         contours = list(np.arange(np.floor(vmin), np.ceil(vmax), 1))
 
     # Find typical frame size:
-    fig, ax = plt.subplots(figsize=(9, 5))
+    fig, ax = plt.subplots(figsize=(13, 7))
     _tf = ThermalFrame(temperature_data=df_therm_data.iloc[0].to_numpy())
-    _tf.plot_thermal_field(ax, show_sensors=show_sensors, contours=contours, v_min=vmin, v_max=vmax)
-    height, width, channels = fig_to_rgb_array(fig).shape
+    _tf.plot_thermal_field(ax, show_cb=show_cb, show_sensors=show_sensors, contours=contours, v_min=vmin, v_max=vmax)
+    example_frame = fig_to_rgb_array(fig)
+    example_frame = cropFrameToContent(example_frame, padding=padding)
+    height, width, channels = example_frame.shape
     if verbose:
         print(f"Video frame size: {height}x{width}x{channels}")
     plt.close(fig) # We close the figure to avoid displaying it
@@ -236,10 +241,12 @@ def generateThermalVideo(df_therm_data:pd.DataFrame,
             frames.append(np.zeros((height, width, channels), dtype=np.uint8))
             continue
         tf.calculate_thermal_field(verbose=False)
-        fig, ax = plt.subplots(figsize=(9, 5))
-        tf.plot_thermal_field(ax, show_sensors=show_sensors, contours=contours, v_min=vmin, v_max=vmax)
+        fig, ax = plt.subplots(figsize=(13, 7))
+        tf.plot_thermal_field(ax, show_cb=show_cb, show_sensors=show_sensors, show_max_temp=show_max_temp, contours=contours, v_min=vmin, v_max=vmax)
         ax.set_title(f"Thermal field for hive {tf.hive_id} at {str(t)}") # Overwrite the title
-        frames.append(fig_to_rgb_array(fig))
+        _frame = fig_to_rgb_array(fig)
+        _frame = cropFrameToContent(_frame, padding=padding)
+        frames.append(_frame)
         plt.close(fig) # We close the figure to avoid displaying it
     if verbose:
         print(f"Generated {len(frames)} frames for the video")
@@ -531,7 +538,7 @@ class ThermalFrame:
         return self.thermal_field
 
     def plot_thermal_field(self, ax, cmap=None, 
-                           show_cb:bool=False, 
+                           show_cb:bool=True, 
                            show_sensors:bool=False, 
                            show_max_temp:bool=False, 
                            contours:list=None, annotate_contours:bool=True, 
@@ -579,7 +586,7 @@ class ThermalFrame:
             if viewed_from == 'back':
                 x = self.x_pcb - x
             ax.plot(x, y, 'go', markersize=4,label='Max temp')
-            ax.annotate(f'{self.max_temp:.1f}°C', xy=(x, y), xytext=(5, 5), textcoords='offset points', fontsize=8, color='black')
+            ax.annotate(f'{self.max_temp:.1f}°C', xy=(x, y), xytext=(5, 5), textcoords='offset points', fontsize=10, color='black')
             ax.legend(loc='upper right', fontsize=7)
 
         ax.set_title(f'Thermal field for hive {self.hive_id} {"(no valid sensors)" if self.n_bad_sensors==ThermalFrame.n_sensors else ""}')
