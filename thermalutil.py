@@ -6,8 +6,10 @@ Author(s):
 import numpy as np
 import pandas as pd
 import scipy
+from tqdm import tqdm
 from scipy.interpolate import RBFInterpolator
 import matplotlib.pyplot as plt
+from ABCImaging.VideoManagment.videolib import generateVideoFromList, fig_to_rgb_array
 
 def generateThermalDF(df:pd.DataFrame)->pd.DataFrame:
     '''
@@ -69,7 +71,8 @@ def readFromFile(filepath:str, verbose:bool=False)->pd.DataFrame:
 
     if filepath.endswith('.csv'):
         df = pd.read_csv(filepath, parse_dates=['datetime'])
-        df.drop(columns=['timestamp'], inplace=True)
+        if 'timestamp' in df.columns:
+            df.drop(columns=['timestamp'], inplace=True)
 
     else:
         # First skip the lines that do not start with "20" (the millenia)
@@ -170,7 +173,81 @@ def preview(df_therm_data,
         a = ax.flat[i]
         tf.plot_thermal_field(a,show_cb=True, show_sensors=show_sensors, show_max_temp=True, contours=contours, annotate_contours=True, v_min=vmin,v_max=vmax)
         a.set_title(f"Row {row} -> {str(df_therm_data.iloc[row].name)}") # Overwrite the title
+
+def generateThermalVideo(df_therm_data:pd.DataFrame, 
+                         video_name:str, 
+                         fps:int=10, 
+                         show_sensors:bool=False, 
+                         contours:list[float]=[], 
+                         vmin:float=None, vmax:float=None,
+                         faulty_s:list[int]=[],
+                         verbose:bool=False):
+    '''
+    Generates a video from the thermal data in the dataframe.
+    The smallest gap between two timestamps is used to determine the expected time resolution.
+    '''
+
+    time_diffs = df_therm_data.index.to_series().diff().dropna()
+    time_res = time_diffs.min()
+    if verbose:
+        print(f"Time resolution of the data: {time_res}")
+    time_index = pd.date_range(start=df_therm_data.index.min(), end=df_therm_data.index.max(), freq=time_res)
+
+    # Put NaN values for faulty sensors
+    for s in faulty_s:
+        col_name = f't{s:02d}'
+        if col_name in df_therm_data.columns:
+            df_therm_data.loc[:,col_name] = np.nan
+        else:
+            print(f"Warning: sensor {s} is not in the dataframe columns")
     
+    # Set the vmin and vmax if not provided
+    if vmin is None:
+        vmin = df_therm_data.min().min()
+    if vmax is None:
+        vmax = df_therm_data.max().max()
+
+    if contours == []:
+        contours = list(np.arange(np.floor(vmin), np.ceil(vmax), 1))
+
+    # Find typical frame size:
+    fig, ax = plt.subplots(figsize=(9, 5))
+    _tf = ThermalFrame(temperature_data=df_therm_data.iloc[0].to_numpy())
+    _tf.plot_thermal_field(ax, show_sensors=show_sensors, contours=contours, v_min=vmin, v_max=vmax)
+    height, width, channels = fig_to_rgb_array(fig).shape
+    if verbose:
+        print(f"Video frame size: {height}x{width}x{channels}")
+    plt.close(fig) # We close the figure to avoid displaying it
+
+    # Generate the frames:
+    frames = []
+    for t in tqdm(time_index, desc="Generating frames…"):
+        if t not in df_therm_data.index:
+            if verbose:
+                print(f"Time {t} is not in the dataframe index")
+            # Append black frame
+            frames.append(np.zeros((height, width, channels), dtype=np.uint8))
+            continue
+        try:
+            tf = ThermalFrame(temperature_data=df_therm_data.loc[t].to_numpy(), bad_sensors=faulty_s)
+        except NoValidSensors as e:
+            print(f"Skipping time {t} due to no valid sensors")
+            # Append black frame
+            frames.append(np.zeros((height, width, channels), dtype=np.uint8))
+            continue
+        tf.calculate_thermal_field(verbose=False)
+        fig, ax = plt.subplots(figsize=(9, 5))
+        tf.plot_thermal_field(ax, show_sensors=show_sensors, contours=contours, v_min=vmin, v_max=vmax)
+        ax.set_title(f"Thermal field for hive {tf.hive_id} at {str(t)}") # Overwrite the title
+        frames.append(fig_to_rgb_array(fig))
+        plt.close(fig) # We close the figure to avoid displaying it
+    if verbose:
+        print(f"Generated {len(frames)} frames for the video")
+
+    # Generate the video
+    generateVideoFromList(frames, dest='outputVideos', name=video_name, fps=fps, grayscale=False)
+
+
 def trend_filter(data, lmbd=50, order=2):
     ''' Trend filtering
         type: 'L1' or 'HP'
@@ -227,7 +304,6 @@ class NoValidSensors(Exception):
 
 class ThermalFrame:
     show_hexagons = False
-    # show_contour = True
     show_cb = False
     show_labels = False
     save_fig = False
@@ -291,8 +367,10 @@ class ThermalFrame:
         c = tgt % 11
         mapping_t_to_row_col[s] = {'row': r, 'col': c}
 
-    def __init__(self, temperature_data, hive_id:int=-1, hive_pos=None, bad_sensors=None,show_contour=True):
+    def __init__(self, temperature_data, hive_id:int=-1, bad_sensors:list[int]=[]):
         '''
+        temperature_data: list or np.ndarray of length 64 or 65 (if validity flag is included)
+        hive_id: int, id of the hive (for plotting purposes)
         bad_sensors: list with indeces of bad sensors
         '''
 
@@ -301,14 +379,11 @@ class ThermalFrame:
         self.rbf_interpolator = None
 
         self.hive_id = hive_id
-        self.hive_pos = hive_pos
-
-        self.show_contour = show_contour
 
         self.set_thermal_data(temperature_data)
         self.find_bad_sensors() # Check for any bad sensor
 
-        if bad_sensors is not None: # Manually add more bad sensors
+        if len(bad_sensors) > 0: # Manually add more bad sensors
             self.add_bad_sensors(bad_sensors)
 
     def set_thermal_data(self, temperatures):
@@ -327,25 +402,31 @@ class ThermalFrame:
         
         self.temperature_array = self.temperature_list[ThermalFrame.sensor_idx_map] # Here the order is changed to match the sensor positions on the PCB
 
-    def add_bad_sensors(self, list_bad_sensors):
+    def add_bad_sensors(self, bad_sensors:list[int]):
         '''Add more bad sensors'''
-        self.bad_sensors = np.concatenate((self.bad_sensors, list_bad_sensors))
-        self.n_bad_sensors = len(self.bad_sensors)
+        self.bad_sensors = self.bad_sensors + bad_sensors
+        self.updateBadSensors()
 
     def find_bad_sensors(self):
         '''Find the indices of bad sensors in a list or array of thermal data.
             For now only 2 cases are verified'''
         bad_sensors_idx = np.asarray((self.temperature_list==np.inf)|
-                                     (self.temperature_list==-273.0)|
+                                     (self.temperature_list<=-273.0)|
                                      (self.temperature_list>2000)|
                                      (np.isnan(self.temperature_list))).nonzero()
+        self.bad_sensors = bad_sensors_idx[0].tolist() # Ignore previously detected bad sensors
+        self.updateBadSensors()
 
-        if bad_sensors_idx[0].shape[0] ==ThermalFrame.n_sensors:
+    def updateBadSensors(self):
+        '''Update the bad sensors instance variables'''
+        self.bad_sensors = list(set(self.bad_sensors)) # Remove duplicates
+        self.bad_sensors.sort()
+
+        if len(self.bad_sensors) >= ThermalFrame.n_sensors:
             raise NoValidSensors('Not a single sensor has valid data!')
 
-        if bad_sensors_idx[0].shape[0] > 0:
-            self.bad_sensors = bad_sensors_idx[0]
-            self.n_bad_sensors = len(bad_sensors_idx[0])
+        if len(self.bad_sensors) > 0:
+            self.n_bad_sensors = len(self.bad_sensors)
             bad_sensors_array_idx = np.where(np.isin(ThermalFrame.sensor_idx_map, self.bad_sensors))[0]
 
             self.sensor_x_faulty,self.sensor_y_faulty = ThermalFrame.sensor_x[bad_sensors_array_idx], ThermalFrame.sensor_y[bad_sensors_array_idx]
@@ -449,7 +530,14 @@ class ThermalFrame:
 
         return self.thermal_field
 
-    def plot_thermal_field(self, ax, cmap=None, show_cb:bool=False, show_sensors:bool=False, show_max_temp:bool=False, contours:list=None, annotate_contours:bool=True, v_min=None, v_max=None, viewed_from:str = 'front'):
+    def plot_thermal_field(self, ax, cmap=None, 
+                           show_cb:bool=False, 
+                           show_sensors:bool=False, 
+                           show_max_temp:bool=False, 
+                           contours:list=None, annotate_contours:bool=True, 
+                           v_min=None, v_max=None, 
+                           viewed_from:str = 'front'):
+        
         assert viewed_from in ['front', 'back'], "viewed_from must be 'front' or 'back'"
         cm = plt.get_cmap('bwr') if cmap is None else cmap
 
