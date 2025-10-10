@@ -10,6 +10,7 @@ from tqdm import tqdm
 from scipy.interpolate import RBFInterpolator
 import matplotlib.pyplot as plt
 from ABCImaging.VideoManagment.videolib import generateVideoFromList, fig_to_rgb_array, cropFrameToContent
+from ABCImaging.HiveOpenings.libOpenings import valid_ts
 
 def generateThermalDF(df:pd.DataFrame)->pd.DataFrame:
     '''
@@ -177,6 +178,7 @@ def preview(df_therm_data,
 def generateThermalVideo(df_therm_data:pd.DataFrame, 
                          video_name:str, 
                          fps:int=10,
+                         hive_nb:int=-1,
                          show_cb:bool=False,
                          show_sensors:bool=False, 
                          show_max_temp:bool=False,
@@ -215,7 +217,7 @@ def generateThermalVideo(df_therm_data:pd.DataFrame,
 
     # Find typical frame size:
     fig, ax = plt.subplots(figsize=(13, 7))
-    _tf = ThermalFrame(temperature_data=df_therm_data.iloc[0].to_numpy())
+    _tf = ThermalFrame(temperature_data=df_therm_data.iloc[0].to_numpy(), hive_id=hive_nb)
     _tf.plot_thermal_field(ax, show_cb=show_cb, show_sensors=show_sensors, contours=contours, v_min=vmin, v_max=vmax)
     example_frame = fig_to_rgb_array(fig)
     example_frame = cropFrameToContent(example_frame, padding=padding)
@@ -234,7 +236,7 @@ def generateThermalVideo(df_therm_data:pd.DataFrame,
             frames.append(np.zeros((height, width, channels), dtype=np.uint8))
             continue
         try:
-            tf = ThermalFrame(temperature_data=df_therm_data.loc[t].to_numpy(), bad_sensors=faulty_s)
+            tf = ThermalFrame(temperature_data=df_therm_data.loc[t].to_numpy(), hive_id=hive_nb, ts=t, bad_sensors=faulty_s)
         except NoValidSensors as e:
             print(f"Skipping time {t} due to no valid sensors")
             # Append black frame
@@ -374,10 +376,11 @@ class ThermalFrame:
         c = tgt % 11
         mapping_t_to_row_col[s] = {'row': r, 'col': c}
 
-    def __init__(self, temperature_data, hive_id:int=-1, bad_sensors:list[int]=[]):
+    def __init__(self, temperature_data, hive_id:int=-1, ts:pd.Timestamp=None, bad_sensors:list[int]=[]):
         '''
         temperature_data: list or np.ndarray of length 64 or 65 (if validity flag is included)
-        hive_id: int, id of the hive (for plotting purposes)
+        hive_id: int, id of the hive (for plotting purposes and to check validity)
+        ts: pd.Timestamp, timestamp of the data (to check validity)
         bad_sensors: list with indeces of bad sensors
         '''
 
@@ -386,6 +389,10 @@ class ThermalFrame:
         self.rbf_interpolator = None
 
         self.hive_id = hive_id
+        self.ts = ts
+        self.valid = True # Assume valid until proven otherwise
+        if self.ts is not None and self.hive_id != -1:
+            self.valid = valid_ts(self.ts, self.hive_id, recovery_time=180) # Thermal properties take longer to stabilise
 
         self.set_thermal_data(temperature_data)
         self.find_bad_sensors() # Check for any bad sensor
@@ -592,6 +599,12 @@ class ThermalFrame:
         ax.set_title(f'Thermal field for hive {self.hive_id} {"(no valid sensors)" if self.n_bad_sensors==ThermalFrame.n_sensors else ""}')
         ax.set_xlim([0, self.x_pcb])
         ax.set_ylim([0, self.y_pcb])
+
+        if not self.valid:
+            # Add a red transparent rectangle to indicate invalid data, and write "Invalid dt" in the middle in red too
+            ax.add_patch(plt.Rectangle((0, 0), self.x_pcb, self.y_pcb, color='red', alpha=0.5))
+            # Put a white rectangle behind the text to make it more visible
+            ax.text(self.x_pcb/2, self.y_pcb/2, 'Invalid dt', color='black', fontsize=40, ha='center', va='center', alpha=1)
 
         return ax
 
