@@ -177,6 +177,7 @@ def preview(df_therm_data,
 
 def generateThermalVideo(df_therm_data:pd.DataFrame, 
                          video_name:str, 
+                         dest:str='outputVideos',
                          fps:int=10,
                          hive_nb:int=-1,
                          show_cb:bool=False,
@@ -228,7 +229,7 @@ def generateThermalVideo(df_therm_data:pd.DataFrame,
 
     # Generate the frames:
     frames = []
-    for t in tqdm(time_index, desc="Generating frames…"):
+    for t in tqdm(time_index, desc="Generating frames"):
         if t not in df_therm_data.index:
             if verbose:
                 print(f"Time {t} is not in the dataframe index")
@@ -254,7 +255,7 @@ def generateThermalVideo(df_therm_data:pd.DataFrame,
         print(f"Generated {len(frames)} frames for the video")
 
     # Generate the video
-    generateVideoFromList(frames, dest='outputVideos', name=video_name, fps=fps, grayscale=False)
+    generateVideoFromList(frames, dest=dest, name=video_name, fps=fps, grayscale=False)
 
 
 def trend_filter(data, lmbd=50, order=2):
