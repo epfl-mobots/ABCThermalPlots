@@ -26,14 +26,21 @@ def cprint(s:str, clr=OKCYAN):
 
 
 class ThermalHive:
+    '''
+    A class to represent a thermal hive composed of two thermal frames (upper and lower).
+    The class can analyze the thermal data to locate the cluster(s) position(s).
+    '''
+
+    gap_between_frames_mm = 20  # mm, vertical gap between upper and lower frames
+
     def __init__(self, upper_frame: ThermalFrame, lower_frame: ThermalFrame, isotherm:float):
         self.frames = {'upper': upper_frame, 'lower': lower_frame}
 
         # Temperature isotherm that defines a cluster
         self.isotherm = isotherm 
 
-        self.origin_x = {'upper': None, 'lower': None}
-        self.origin_y = {'upper': None, 'lower': None}
+        self.origin_x = {'upper': 0, 'lower': 0}
+        self.origin_y = {'upper': ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, 'lower': 0}
 
         self.contours = None
         self._contours_frame = {'upper': None, 'lower': None}
@@ -70,10 +77,12 @@ class ThermalHive:
 
     def add_offset(self, pos:tuple[float, float], frame:str):
         assert frame in ['upper', 'lower'], "frame must be either 'upper' or 'lower'"
+        if self.origin_x[frame] is None or self.origin_y[frame] is None:
+            raise ValueError("Origin not set. Use set_origins() to set the origins of the upper and lower frames.")
         px, py = pos
         px+= self.origin_x[frame]
         py+= self.origin_y[frame]
-        return px, py
+        return float(px), float(py)
 
     def find_hive_contours(self, why:str=None, verbose:bool=False) -> bool:
         '''
@@ -92,7 +101,7 @@ class ThermalHive:
 
         if self.n_contours_tot == 1:
             self.isPositionFix = True
-            self.position = self.contours_CoM[0]
+            self.position =  tuple(map(float, self.contours_CoM[0]))
             if self.n_contours['upper'] == 1:
                 frame_with_cluster = 'upper'
                 self.position_frame['upper'] = self.position
@@ -164,6 +173,11 @@ class ThermalHive:
         self.origin_x['upper'], self.origin_y['upper'] = origin_upper
         self.origin_x['lower'], self.origin_y['lower'] = origin_lower
 
+    def set_isotherm(self, temperature:float) -> None:
+        ''' define the cutoff isotherm above which clusters are interpreted'''
+        assert temperature > 0, "Temperature isotherm must be > 0"
+        self.isotherm = temperature
+
 
     #---- GETTERS ----
 
@@ -221,6 +235,15 @@ class ThermalHive:
         else:
             print(f"Position is not fixed (n_contours={self.n_contours}).")
             return None
+        
+    def get_contour_box(self):
+        '''
+        Returns the bounding box of the contour if position is fixed, else None
+        '''
+        if self.isPositionFix:
+            return self.contours_box
+        else:
+            return None
 
 
     # ---- INTERNAL METHODS ----
@@ -251,7 +274,12 @@ class ThermalHive:
 
     def _inner_find_contours(self, tf:ThermalFrame) -> QuadContourSet:
         # 1. Get the interpolated thermal field (not temperature sensors data array)
+        if tf.thermal_field is None:
+            tf.calculate_thermal_field()
+
         t = tf.thermal_field
+        # flip t vertically to match the image orientation
+        t = np.flipud(t)
         # 2. Thresholding to the target temperature
         thresholded_field = np.copy(t)
 
@@ -297,6 +325,8 @@ class ThermalHive:
                 A = 0.5 * g.sum()
                 cx = ((x[:-1] + x[1:]) * g).sum()
                 cy = ((y[:-1] + y[1:]) * g).sum()
+                if abs(A) < 1e-4:
+                    continue
                 p = np.round(1. / (6 * A) * np.array([cx, cy]), 2)
             elif method == 'box':
                 # Bounding box
