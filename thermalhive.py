@@ -142,32 +142,53 @@ class ThermalHive:
 
         return self.isPositionFix
     
-    def plot(self, ax:plt.Axes, frame:str, contours:bool=True, center:bool=True, box:bool=False):
-        assert frame in ['upper', 'lower'], "frame must be either 'upper' or 'lower'"
+    def plot(self, ax:plt.Axes, contours:bool=True, center:bool=True, box:bool=False):
+        lw = 1.5
+        # First draw the frame contours
+        # lower frame
+        ax.plot([0, ThermalFrame.x_pcb, ThermalFrame.x_pcb, 0, 0],
+                    [0, 0, ThermalFrame.y_pcb, ThermalFrame.y_pcb, 0],
+                    lw=lw/2, c='black', zorder=2)
+        # upper frame
+        ax.plot([0, ThermalFrame.x_pcb, ThermalFrame.x_pcb, 0, 0],
+                [ThermalFrame.y_pcb + ThermalHive.gap_between_frames_mm,
+                 ThermalFrame.y_pcb + ThermalHive.gap_between_frames_mm,
+                 2*ThermalFrame.y_pcb + ThermalHive.gap_between_frames_mm,
+                 2*ThermalFrame.y_pcb + ThermalHive.gap_between_frames_mm,
+                 ThermalFrame.y_pcb + ThermalHive.gap_between_frames_mm],
+                lw=lw/2, c='black', zorder=2)
 
         if not contours and not center and not box:
             print("Nothing to plot!")
             return
 
-        if self._contours_frame[frame] is None:
+        if self._contours_frame['lower'] is None or self._contours_frame['upper'] is None:
             self.find_hive_contours(f'2FCl-plot')
 
         if contours:
-            cntr_to_plot = self._contours_frame[frame]
+            lower_cnts = self._contours_frame['lower']
+            upper_cnts = self._contours_frame['upper']
 
-            # and self.contours is not None:
-            for _, c in enumerate(cntr_to_plot):
+            for _, c in enumerate(lower_cnts):
                 ax.plot(c[:, 0], c[:, 1], c='m')
+            for _, c in enumerate(upper_cnts):
+                ax.plot(c[:, 0], c[:, 1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, c='m')
 
         if center:
-            CoM = self.contours_CoM_frame[frame]
-            for c in CoM:
-                ax.scatter(c[0], c[1], marker='x', c='r')
-                ax.scatter(c[0], c[1], marker='o', c='r')
+            CoM_upper = self.contours_CoM_frame['upper']
+            CoM_lower = self.contours_CoM_frame['lower']
+            for c in CoM_lower:
+                ax.scatter(c[0], c[1], marker='x', c='r', s=15)
+                ax.scatter(c[0], c[1], marker='o', c='r', s=10)
+            for c in CoM_upper:
+                ax.scatter(c[0], c[1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, marker='x', c='r', s=15)
+                ax.scatter(c[0], c[1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, marker='o', c='r', s=10)
 
         if box and (self.contours_box is not None or len(self.contours_box) > 0):
-            for b in self.contours_box_frame[frame]:
-                ax.plot(b[0], b[1], c='#913ba8', lw=1.5)
+            for b in self.contours_box_frame['lower']:
+                ax.plot(b[0], b[1], c='#913ba8', lw=lw)
+            for b in self.contours_box_frame['upper']:
+                ax.plot(b[0], b[1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, c='#913ba8', lw=lw)
 
 
     #---- SETTERS ----
