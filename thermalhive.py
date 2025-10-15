@@ -34,6 +34,9 @@ class ThermalHive:
     gap_between_frames_mm = 20  # mm, vertical gap between upper and lower frames
 
     def __init__(self, upper_frame: ThermalFrame, lower_frame: ThermalFrame, isotherm:float):
+        # Make sure both frames belong to the same hive
+        if upper_frame.hive_id is not None and lower_frame.hive_id is not None:
+            assert upper_frame.hive_id == lower_frame.hive_id, "Upper and lower frames must belong to the same hive (hive_id mismatch)."
         self.frames = {'upper': upper_frame, 'lower': lower_frame}
 
         # Temperature isotherm that defines a cluster
