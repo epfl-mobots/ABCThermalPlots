@@ -39,6 +39,9 @@ class ThermalHive:
         # Temperature isotherm that defines a cluster
         self.isotherm = isotherm 
 
+        # The frame that currently has the cluster
+        self.frame_with_cluster = None # 'upper', 'lower' or None
+
         self.origin_x = {'upper': 0, 'lower': 0}
         self.origin_y = {'upper': ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, 'lower': 0}
 
@@ -103,13 +106,13 @@ class ThermalHive:
             self.isPositionFix = True
             self.position =  tuple(map(float, self.contours_CoM[0]))
             if self.n_contours['upper'] == 1:
-                frame_with_cluster = 'upper'
+                self.frame_with_cluster = 'upper'
                 self.position_frame['upper'] = self.position
                 self.position_frame['lower'] = None
                 self.position_in_hive = self.add_offset(self.position, frame='upper')
 
             elif self.n_contours['lower'] == 1:
-                frame_with_cluster = 'lower'
+                self.frame_with_cluster = 'lower'
                 self.position_frame['lower'] = self.position
                 self.position_frame['upper'] = None
                 self.position_in_hive = self.add_offset(self.position, frame='lower')
@@ -119,7 +122,7 @@ class ThermalHive:
             
         else:
             self.isPositionFix = False
-            frame_with_cluster = None
+            self.frame_with_cluster = None
             self.position = None # this is commented out in parent, why??
             self.position_frame['lower'] = None
             self.position_frame['upper'] = None
@@ -127,7 +130,7 @@ class ThermalHive:
 
         if verbose:
             if self.isPositionFix:
-                fixstr = f"frame {str(frame_with_cluster)}"
+                fixstr = f"frame {str(self.frame_with_cluster)}"
             else:
                 fixstr = ""
 
@@ -199,13 +202,14 @@ class ThermalHive:
         
     def get_wholehive_position(self):
         '''Returns the position of the cluster in the whole hive reference frame
+        Origin is bottom-left of lower frame.
         If multiple clusters were found, returns None.
         '''
         if self.isPositionFix:
             return self.position_in_hive
         else:
             print(f"Could not define the cluster position (n_contours={self.n_contours}).")
-            return None
+            return None, None
     
     def get_pos_with_offset(self, frame:str, verbose:bool=False):
         assert frame in ['upper', 'lower'], "frame must be either 'upper' or 'lower'"
