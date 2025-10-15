@@ -148,7 +148,7 @@ class ThermalFrame:
             self.sensor_x_trusty,self.sensor_y_trusty = np.delete(ThermalFrame.sensor_x,bad_sensors_array_idx), np.delete(ThermalFrame.sensor_y,bad_sensors_array_idx)
             self.temp_array_trusty = np.delete(self.temperature_array, bad_sensors_array_idx)
         else:
-            self.bad_sensors = ()
+            self.bad_sensors = []
             self.n_bad_sensors = 0
             self.sensor_x_faulty = []
             self.sensor_y_faulty = []
