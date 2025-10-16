@@ -251,7 +251,8 @@ class ThermalFrame:
                            show_max_temp:bool=False, 
                            contours:list=None, annotate_contours:bool=True, 
                            v_min=None, v_max=None, 
-                           viewed_from:str = 'front'):
+                           viewed_from:str = 'front',
+                           y_offset:float=0.0):
         
         assert viewed_from in ['front', 'back'], "viewed_from must be 'front' or 'back'"
         cm = plt.get_cmap('bwr') if cmap is None else cmap
@@ -266,12 +267,16 @@ class ThermalFrame:
             temp_field = np.fliplr(temp_field)
 
         # Plot temperature field
-        _image = ax.imshow(temp_field,extent=ThermalFrame.extent,cmap=cm, vmin=v_min, vmax=v_max)
+        extent = ThermalFrame.extent.copy()
+        if y_offset != 0.0:
+            extent[2] += y_offset
+            extent[3] += y_offset
+        self._image = ax.imshow(temp_field,extent=extent,cmap=cm, vmin=v_min, vmax=v_max)
 
         ax.yaxis.set_major_locator(plt.MaxNLocator(3)) # Reduce the number of ticks on the y-axis
 
         if show_cb:
-            cbar = plt.colorbar(_image, ax=ax, orientation='vertical')
+            cbar = plt.colorbar(self._image, ax=ax, orientation='vertical')
             cbar.ax.set_position([ax.get_position().x1 + 0.01, ax.get_position().y0, 0.04, ax.get_position().height])  # Adjust position relative to ax
 
         # Mark sensors

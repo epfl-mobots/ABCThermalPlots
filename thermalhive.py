@@ -32,6 +32,7 @@ class ThermalHive:
     '''
 
     gap_between_frames_mm = 20  # mm, vertical gap between upper and lower frames
+    HIVE_PADDING = 20  # padding around the hive when plotting
 
     def __init__(self, upper_frame: ThermalFrame, lower_frame: ThermalFrame, isotherm:float):
         # Make sure both frames belong to the same hive
@@ -77,9 +78,9 @@ class ThermalHive:
 
     #---- PUBLIC METHODS ----
 
-    def update(self, why:str='') -> bool:
+    def update(self, why:str='', verbose:bool=False) -> bool:
         ''' Search for cluster(s) position(s) in the whole hive'''
-        return self.find_hive_contours(f'ThermalHive-update|{why}')
+        return self.find_hive_contours(f'ThermalHive-update|{why}', verbose=verbose)
 
     def add_offset(self, pos:tuple[float, float], frame:str):
         assert frame in ['upper', 'lower'], "frame must be either 'upper' or 'lower'"
@@ -142,7 +143,7 @@ class ThermalHive:
 
         return self.isPositionFix
     
-    def plot(self, ax:plt.Axes, contours:bool=True, center:bool=True, box:bool=False):
+    def plot(self, ax:plt.Axes, contours:bool=True, center:bool=True, box:bool=False, Tgrad:bool=True):
         lw = 1.5
         # First draw the frame contours
         # lower frame
@@ -157,8 +158,16 @@ class ThermalHive:
                  2*ThermalFrame.y_pcb + ThermalHive.gap_between_frames_mm,
                  ThermalFrame.y_pcb + ThermalHive.gap_between_frames_mm],
                 lw=lw/2, c='black', zorder=2)
+        
+        if Tgrad:
+            v_min = min(self.frames['lower'].min_temp, self.frames['upper'].min_temp)
+            v_max = max(self.frames['lower'].max_temp, self.frames['upper'].max_temp)
+            # Plot the thermal gradient of both frames
+            self.frames['lower'].plot_thermal_field(ax, cmap='bwr', show_cb=True, v_min=v_min, v_max=v_max)
+            self.frames['upper'].plot_thermal_field(ax, cmap='bwr', show_cb=False, v_min=v_min, v_max=v_max,
+                y_offset=ThermalHive.gap_between_frames_mm + ThermalFrame.y_pcb)
 
-        if not contours and not center and not box:
+        if not contours and not center and not box and not Tgrad:
             print("Nothing to plot!")
             return
 
@@ -190,6 +199,8 @@ class ThermalHive:
             for b in self.contours_box_frame['upper']:
                 ax.plot(b[0], b[1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, c='#913ba8', lw=lw)
 
+        ax.set_ylim(-ThermalHive.HIVE_PADDING, 2*ThermalFrame.y_pcb + ThermalHive.gap_between_frames_mm + ThermalHive.HIVE_PADDING)
+        ax.set_xlim(-ThermalHive.HIVE_PADDING, ThermalFrame.x_pcb + ThermalHive.HIVE_PADDING)
 
     #---- SETTERS ----
 
