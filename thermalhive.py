@@ -187,11 +187,11 @@ class ThermalHive:
             CoM_upper = self.contours_CoM_frame['upper']
             CoM_lower = self.contours_CoM_frame['lower']
             for c in CoM_lower:
-                ax.scatter(c[0], c[1], marker='x', c='r', s=15)
-                ax.scatter(c[0], c[1], marker='o', c='r', s=10)
+                ax.scatter(c[0], c[1], marker='x', c='m', s=15)
+                ax.scatter(c[0], c[1], marker='o', c='m', s=10)
             for c in CoM_upper:
-                ax.scatter(c[0], c[1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, marker='x', c='r', s=15)
-                ax.scatter(c[0], c[1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, marker='o', c='r', s=10)
+                ax.scatter(c[0], c[1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, marker='x', c='m', s=15)
+                ax.scatter(c[0], c[1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, marker='o', c='m', s=10)
 
         if box and (self.contours_box is not None or len(self.contours_box) > 0):
             for b in self.contours_box_frame['lower']:
