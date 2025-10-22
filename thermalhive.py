@@ -22,6 +22,9 @@ UNDERLINE = '\033[4m'
 
 ENDC = '\033[0m'
 def cprint(s:str, clr=OKCYAN):
+    """
+    Just some colored print for debugging
+    """
     print(clr + s + ENDC)
 
 
