@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.interpolate import RBFInterpolator
-from ABCImaging.HiveOpenings.libOpenings import valid_ts
+from RHCImaging.HiveOpenings.libOpenings import valid_ts
 
 # Make an exception class for no sensors being valid, where I can add a message
 class NoValidSensors(Exception):

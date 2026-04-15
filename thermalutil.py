@@ -9,7 +9,7 @@ import scipy
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from thermalframe import ThermalFrame, NoValidSensors
-from ABCImaging.VideoManagment.videolib import generateVideoFromList, fig_to_rgb_array, cropFrameToContent
+from RHCImaging.VideoManagment.videolib import generateVideoFromList, fig_to_rgb_array, cropFrameToContent
 
 def generateThermalDF(df:pd.DataFrame)->pd.DataFrame:
     '''
