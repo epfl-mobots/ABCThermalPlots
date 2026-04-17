@@ -147,6 +147,11 @@ class ThermalHive:
         return self.isPositionFix
     
     def plot(self, ax:plt.Axes, contours:bool=True, center:bool=True, box:bool=False, Tgrad:bool=True):
+        # Ensure that both Thermal Frames have their thermal field calculated (for plotting)
+        for key in self.frames.keys():
+            if self.frames[key].thermal_field is None:
+                self.frames[key].calculate_thermal_field()
+        
         lw = 1.5
         # First draw the frame contours
         # lower frame
