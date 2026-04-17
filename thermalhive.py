@@ -19,13 +19,13 @@ HEADER = '\033[95m'
 OKCYAN = '\033[96m'
 FAIL = '\033[91m'
 UNDERLINE = '\033[4m'
-
 ENDC = '\033[0m'
-def cprint(s:str, clr=OKCYAN):
+
+def cprint(string:str, color=OKCYAN):
     """
     Just some colored print for debugging
     """
-    print(clr + s + ENDC)
+    print(color + string + ENDC)
 
 
 class ThermalHive:
@@ -34,10 +34,10 @@ class ThermalHive:
     The class can analyze the thermal data to locate the cluster(s) position(s).
     '''
 
-    gap_between_frames_mm = 20  # mm, vertical gap between upper and lower frames
+    gap_between_frames_mm = 66  # mm, vertical gap between upper and lower frames, including the electronics bay on top of the lower frame
     HIVE_PADDING = 20  # padding around the hive when plotting
 
-    def __init__(self, upper_frame: ThermalFrame, lower_frame: ThermalFrame, isotherm:float):
+    def __init__(self, upper_frame:ThermalFrame, lower_frame:ThermalFrame, isotherm:float):
         # Make sure both frames belong to the same hive
         if upper_frame.hive_id is not None and lower_frame.hive_id is not None:
             assert upper_frame.hive_id == lower_frame.hive_id, "Upper and lower frames must belong to the same hive (hive_id mismatch)."
@@ -101,7 +101,7 @@ class ThermalHive:
         '''
 
         for key in self.frames.keys():
-            # find the hotspots for cluster candidates, inc CoM and bbox
+            # find the hotspots for cluster candidates, including CoM and bbox
             self._find_contours_oneframe(frame=key)
 
         # aggregate relevant sub-values
@@ -149,9 +149,11 @@ class ThermalHive:
     def plot(self, ax:plt.Axes, contours:bool=True, center:bool=True, box:bool=False, Tgrad:bool=True):
         '''
         Plots the thermal hive with the following options:
-        - contours: whether to plot the contours of the cluster candidates
-        - center: whether to plot the center of mass of the cluster candidates
-        - box: whether to plot the bounding box of the cluster candidates
+
+        :param contours: whether to plot the contours of the cluster candidates
+        :param center: whether to plot the center of mass of the cluster candidates
+        :param box: whether to plot the bounding box of the cluster candidates
+        :param Tgrad: whether to plot the thermal gradient of the frames ontop
         '''
         # Ensure that both Thermal Frames have their thermal field calculated (for plotting)
         for key in self.frames.keys():
