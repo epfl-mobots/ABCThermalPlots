@@ -201,11 +201,14 @@ class ThermalHive:
                 ax.scatter(c[0], c[1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, marker='x', c='m', s=15)
                 ax.scatter(c[0], c[1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, marker='o', c='m', s=10)
 
-        if box and (self.contours_box is not None or len(self.contours_box) > 0):
-            for b in self.contours_box_frame['lower']:
-                ax.plot(b[0], b[1], c='#913ba8', lw=lw)
-            for b in self.contours_box_frame['upper']:
-                ax.plot(b[0], b[1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, c='#913ba8', lw=lw)
+        if box:
+            if (self.contours_box is not None and len(self.contours_box) > 0):
+                for b in self.contours_box_frame['lower']:
+                    ax.plot(b[0], b[1], c='#913ba8', lw=lw)
+                for b in self.contours_box_frame['upper']:
+                    ax.plot(b[0], b[1]+ThermalHive.gap_between_frames_mm+ThermalFrame.y_pcb, c='#913ba8', lw=lw)
+            else:
+                print("No contour box to plot.")
 
         ax.set_ylim(-ThermalHive.HIVE_PADDING, 2*ThermalFrame.y_pcb + ThermalHive.gap_between_frames_mm + ThermalHive.HIVE_PADDING)
         ax.set_xlim(-ThermalHive.HIVE_PADDING, ThermalFrame.x_pcb + ThermalHive.HIVE_PADDING)
