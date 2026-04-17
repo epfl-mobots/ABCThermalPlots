@@ -6,7 +6,7 @@ This library implements a class to view a thermal hive composed of two thermal f
 The class is capable of analysing the thermal data to locate where the cluster(s) is (are).
 '''
 
-from thermalutil import ThermalFrame
+from thermalframe import ThermalFrame
 from matplotlib.contour import QuadContourSet
 import numpy as np
 import matplotlib.pyplot as plt
