@@ -147,6 +147,12 @@ class ThermalHive:
         return self.isPositionFix
     
     def plot(self, ax:plt.Axes, contours:bool=True, center:bool=True, box:bool=False, Tgrad:bool=True):
+        '''
+        Plots the thermal hive with the following options:
+        - contours: whether to plot the contours of the cluster candidates
+        - center: whether to plot the center of mass of the cluster candidates
+        - box: whether to plot the bounding box of the cluster candidates
+        '''
         # Ensure that both Thermal Frames have their thermal field calculated (for plotting)
         for key in self.frames.keys():
             if self.frames[key].thermal_field is None:
