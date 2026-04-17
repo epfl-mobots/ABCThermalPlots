@@ -11,6 +11,28 @@ import matplotlib.pyplot as plt
 from thermalframe import ThermalFrame, NoValidSensors
 from RHCImaging.VideoManagment.videolib import generateVideoFromList, fig_to_rgb_array, cropFrameToContent
 
+def _lab_update_isotherm(hive_min_temp:float) -> float:
+    # When hut/min temp is 11.2175C, tracking iso = 15C
+    # Note: see Science Robotics S.M. for explanation of the values
+    if hive_min_temp < 11.2175:
+        return 15.0  # minimum tracking temperature will be 15C
+    else:
+        # NOTE: LAB TESTING!
+        return round(hive_min_temp + 3.0, 1) 
+
+def _hut_update_isotherm(hive_min_temp:float) -> float:
+    # When hut/min temp is 11.2175C, tracking iso = 15C
+    # Note: see Science Robotics S.M. for explanation of the values
+    #_isoth = 0.92 * hive_min_temp + 4.68 # original formula
+    _isoth = 0.92 * hive_min_temp + 8
+    _isoth = np.maximum(_isoth, 15)  # Ensure a minimum isotherm of 15°C
+    return round(_isoth, 1)
+
+def update_isotherm(hive_min_temp:float) -> float:
+    '''wrapper'''
+    #return(self._lab_update_isotherm(hive_min_temp))
+    return(_hut_update_isotherm(hive_min_temp))
+
 def generateThermalDF(df:pd.DataFrame)->pd.DataFrame:
     '''
     Generates a panda df for temperatures that is friendly with the thermalutil.py libray.
